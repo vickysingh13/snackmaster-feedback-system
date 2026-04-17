@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-orange: #FF6B00;
+  --brand-yellow: #FFB800;
+  --brand-dark: #1A0A00;
+  --brand-light: #FFF8F0;
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--brand-light);
+  color: var(--brand-dark);
+}
+
+/* Utility classes */
+.font-display { font-family: var(--font-display); }
+
+/* Star rating custom */
+.star-btn {
+  transition: transform 0.1s ease, color 0.1s ease;
+}
+.star-btn:active {
+  transform: scale(1.3);
+}
+
+/* Input focus glow */
+.input-brand:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 107, 0, 0.25);
+  border-color: var(--brand-orange);
+}
+
+/* Submit button pulse */
+.btn-submit {
+  animation: pulseBrand 2s ease-in-out infinite;
+}
+
+@keyframes pulseBrand {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 0, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(255, 107, 0, 0); }
+}
+
+@keyframes bounceIn {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-bounce-in { animation: bounceIn 0.6s ease-out forwards; }
+.animate-fade-up { animation: fadeUp 0.4s ease-out forwards; }
+.animate-slide-down { animation: slideDown 0.3s ease-out forwards; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f1f1; }
+::-webkit-scrollbar-thumb { background: var(--brand-orange); border-radius: 3px; }
+
+/* Mobile safe area */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+}

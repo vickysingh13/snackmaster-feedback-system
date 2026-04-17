@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Machine {
+  id          Int          @id @default(autoincrement())
+  machineCode String       @unique @map("machine_code") @db.VarChar(20)
+  location    String       @db.VarChar(255)
+  area        String?      @db.VarChar(100)
+  status      String?      @default("active") @db.VarChar(20)
+  createdAt   DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  submissions Submission[]
+
+  @@map("machines")
+}
+
+model Submission {
+  id             Int       @id @default(autoincrement())
+  machineId      Int?      @map("machine_id")
+  type           String    @db.VarChar(50)
+  data           Json      @default("{}")
+  status         String?   @default("pending") @db.VarChar(30)
+  whatsappStatus String?   @default("not_contacted") @map("whatsapp_status") @db.VarChar(30)
+  notes          String?
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  machine        Machine?  @relation(fields: [machineId], references: [id], onUpdate: NoAction)
+
+  @@index([machineId], map: "idx_submissions_machine_id")
+  @@index([type], map: "idx_submissions_type")
+  @@index([status], map: "idx_submissions_status")
+  @@index([createdAt(sort: Desc)], map: "idx_submissions_created_at")
+  @@map("submissions")
+}
+
+model FormConfig {
+  id           Int       @id @default(autoincrement())
+  type         String    @unique @db.VarChar(50)
+  label        String    @db.VarChar(100)
+  isEnabled    Boolean?  @default(true) @map("is_enabled")
+  fields       Json      @default("[]")
+  displayOrder Int?      @default(0) @map("display_order")
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  @@map("form_configs")
+}
+
+model AdminUser {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  name         String?   @default("Admin") @db.VarChar(100)
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@map("admin_users")
+}
+
+model WeeklyConfig {
+  id        Int       @id @default(autoincrement())
+  title     String    @db.VarChar(255)
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  isActive  Boolean?  @default(true) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+
+  @@map("weekly_config")
+}

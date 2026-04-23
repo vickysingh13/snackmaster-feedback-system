@@ -12,9 +12,12 @@ DROP TABLE IF EXISTS admin_users CASCADE;
 CREATE TABLE machines (
   id SERIAL PRIMARY KEY,
   machine_code VARCHAR(20) UNIQUE NOT NULL,
+  name VARCHAR(255),
   location VARCHAR(255) NOT NULL,
   area VARCHAR(100),
+  qr_code_url VARCHAR(255),
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  deleted_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -26,6 +29,9 @@ CREATE TABLE submissions (
   data JSONB NOT NULL DEFAULT '{}',
   status VARCHAR(30) DEFAULT 'pending',
   whatsapp_status VARCHAR(30) DEFAULT 'not_contacted' CHECK (whatsapp_status IN ('not_contacted', 'in_progress', 'done')),
+  admin_notes TEXT,
+  refund_status VARCHAR(30) DEFAULT 'pending' CHECK (refund_status IN ('pending', 'processing', 'completed')),
+  admin_remarks TEXT,
   notes TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -72,25 +78,23 @@ CREATE INDEX idx_submissions_created_at ON submissions(created_at DESC);
 -- SEED DATA
 -- =====================
 
--- Insert 17 vending machines
-INSERT INTO machines (machine_code, location, area, status) VALUES
-  ('SM-2101', 'Hitech City Metro Station - Gate 1', 'Hyderabad', 'active'),
-  ('SM-2102', 'Madhapur Bus Stop - Bay 3', 'Hyderabad', 'active'),
-  ('SM-2103', 'Gachibowli Stadium Entrance', 'Hyderabad', 'active'),
-  ('SM-2104', 'Kondapur Junction - Reliance Fresh', 'Hyderabad', 'active'),
-  ('SM-2105', 'Raidurg Metro Station - Exit B', 'Hyderabad', 'active'),
-  ('SM-2106', 'DLF Cybercity Building 5 Lobby', 'Hyderabad', 'active'),
-  ('SM-2107', 'Mindspace IT Park - Food Court', 'Hyderabad', 'active'),
-  ('SM-2108', 'Jubilee Hills Road No. 36 - Forum Mall', 'Hyderabad', 'active'),
-  ('SM-2109', 'Banjara Hills Road 10 - KFC Corner', 'Hyderabad', 'active'),
-  ('SM-2110', 'Ameerpet Metro Station - Platform 2', 'Hyderabad', 'active'),
-  ('SM-2111', 'Kukatpally Housing Board - Main Gate', 'Hyderabad', 'active'),
-  ('SM-2112', 'JNTU Hyderabad - Main Block Corridor', 'Hyderabad', 'active'),
-  ('SM-2113', 'Nallagandla Outer Ring Road - Petrol Pump', 'Hyderabad', 'active'),
-  ('SM-2114', 'Manikonda Village Main Road', 'Hyderabad', 'active'),
-  ('SM-2115', 'Financial District - Building 12 Lobby', 'Hyderabad', 'active'),
-  ('SM-2116', 'Kokapet Growth Corridor - Parking Block A', 'Hyderabad', 'active'),
-  ('SM-2117', 'Nanakramguda IT Hub - Reception', 'Hyderabad', 'active');
+-- Insert real machine master data
+INSERT INTO machines (machine_code, name, location, area, status) VALUES
+  ('2143', 'WIPRO GOPANPALLY', 'GROUND FLOOR', NULL, 'active'),
+  ('2144', 'WIPRO MANIKONDA 5', 'GROUND FLOOR', NULL, 'active'),
+  ('2145', 'WIPRO MANIKONDA 4', 'GROUND FLOOR', NULL, 'active'),
+  ('2632', 'WIPRO GOPANPALLY 1', 'GROUND FLOOR', NULL, 'active'),
+  ('2633', 'WIPRO GOPANPALLY 2', 'GROUND FLOOR', NULL, 'active'),
+  ('2634', 'WIPRO GOPANPALLY 3', 'GROUND FLOOR', NULL, 'active'),
+  ('2642', 'WIPRO MANIKONDA 1', '9TH FLOOR', NULL, 'active'),
+  ('2643', 'WIPRO MANIKONDA 2', '3RD FLOOR', NULL, 'active'),
+  ('2644', 'WIPRO MANIKONDA 3', 'GROUND FLOOR', NULL, 'active'),
+  ('2645', 'WIPRO MANIKONDA 6', 'GROUND FLOOR', NULL, 'active'),
+  ('4772', 'DRAPER STARTUP HOUSE', 'GACHIBOWLI', NULL, 'active'),
+  ('VV00006', 'HOTEL SAYINN', 'GROUND FLOOR', NULL, 'active'),
+  ('vv00001', 'BOB', 'BANK OF BARODA GACHIBOWLI', NULL, 'active'),
+  ('vv00002', 'IIRM', 'IIRM FINANCIAL DIST', NULL, 'active'),
+  ('vv00003', 'UOH', 'UNIVERSITY OF HYDERABAD GACHIBOWLI', NULL, 'active');
 
 -- Insert form configurations
 INSERT INTO form_configs (type, label, is_enabled, display_order, fields) VALUES

@@ -3,46 +3,40 @@
 import { useEffect, useState } from 'react';
 import {
   fetchFormConfigs,
+  createFormConfig,
+  deleteFormConfig,
   updateFormConfig,
   fetchWeeklyConfig,
   updateWeeklyConfig,
   fetchMachines,
   addMachine,
   updateMachine,
+  deleteMachine,
+  regenerateMachineQR,
+  generateAllMachineQR,
+  downloadAllMachineQR,
 } from '../../../lib/api';
-import {
-  RefreshCcw,
-  ToggleLeft,
-  ToggleRight,
-  Save,
-  Plus,
-  Calendar,
-  Settings2,
-  MapPin,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
+import { RefreshCcw, Save, Plus, Calendar, Settings2, MapPin, Trash2, QrCode } from 'lucide-react';
 
-const TYPE_ICONS = {
-  complaint: '🚨',
-  refund: '💰',
-  feedback: '📋',
-  suggestion: '💡',
-  rating: '⭐',
-};
+const FIELD_TYPES = ['text', 'textarea', 'number', 'select', 'rating', 'like_dislike'];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export default function FormsPage() {
   const [forms, setForms] = useState([]);
-  const [weekly, setWeekly] = useState(null);
   const [machines, setMachines] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState({});
+  const [saving, setSaving] = useState(false);
   const [weeklyForm, setWeeklyForm] = useState({ title: '', start_date: '', end_date: '' });
-  const [weeklyMsg, setWeeklyMsg] = useState('');
-  const [expandedForm, setExpandedForm] = useState(null);
-  const [newMachine, setNewMachine] = useState({ machine_code: '', location: '', area: '' });
-  const [addingMachine, setAddingMachine] = useState(false);
-  const [machineMsg, setMachineMsg] = useState('');
+  const [newMachine, setNewMachine] = useState({
+    machineCode: '',
+    name: '',
+    location: '',
+    area: '',
+    status: 'active',
+  });
+  const [newForm, setNewForm] = useState({ type: '', label: '' });
+  const [editingMachineId, setEditingMachineId] = useState(null);
+  const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => { loadAll(); }, []);
 
@@ -54,368 +48,285 @@ export default function FormsPage() {
         fetchWeeklyConfig(),
         fetchMachines(),
       ]);
-      setForms(formsRes.data);
-      setMachines(machinesRes.data);
+      setForms(formsRes.data || []);
+      setMachines((machinesRes.data || []).map((m) => ({ ...m, _draft: { ...m } })));
       if (weeklyRes.data) {
-        setWeekly(weeklyRes.data);
         setWeeklyForm({
           title: weeklyRes.data.title || '',
           start_date: weeklyRes.data.start_date?.slice(0, 10) || '',
           end_date: weeklyRes.data.end_date?.slice(0, 10) || '',
         });
       }
-    } catch (err) {
-      console.error(err);
+    } catch (_err) {
+      setStatusMsg('Failed to load admin data');
     } finally {
       setLoading(false);
     }
   }
 
-  async function toggleForm(form) {
-    setSaving((prev) => ({ ...prev, [form.id]: true }));
-    try {
-      await updateFormConfig(form.id, { is_enabled: !form.is_enabled });
-      setForms((prev) =>
-        prev.map((f) => (f.id === form.id ? { ...f, is_enabled: !f.is_enabled } : f))
-      );
-    } catch {
-      alert('Failed to update form');
-    } finally {
-      setSaving((prev) => ({ ...prev, [form.id]: false }));
-    }
-  }
-
-  async function saveLabelChange(form, newLabel) {
-    setSaving((prev) => ({ ...prev, [`label_${form.id}`]: true }));
-    try {
-      await updateFormConfig(form.id, { label: newLabel });
-      setForms((prev) =>
-        prev.map((f) => (f.id === form.id ? { ...f, label: newLabel } : f))
-      );
-    } catch {
-      alert('Failed to save label');
-    } finally {
-      setSaving((prev) => ({ ...prev, [`label_${form.id}`]: false }));
-    }
-  }
-
   async function saveWeekly() {
-    setSaving((prev) => ({ ...prev, weekly: true }));
-    setWeeklyMsg('');
+    setSaving(true);
     try {
-      const res = await updateWeeklyConfig({ ...weeklyForm, is_active: true });
-      setWeekly(res.data);
-      setWeeklyMsg('✅ Weekly config saved!');
-    } catch {
-      setWeeklyMsg('❌ Failed to save');
+      await updateWeeklyConfig({ ...weeklyForm, is_active: true });
+      setStatusMsg('Weekly config updated');
+    } catch (_err) {
+      setStatusMsg('Failed to save weekly config');
     } finally {
-      setSaving((prev) => ({ ...prev, weekly: false }));
+      setSaving(false);
     }
   }
 
   async function handleAddMachine() {
-    if (!newMachine.machine_code || !newMachine.location) {
-      setMachineMsg('❌ Machine code and location required');
-      return;
-    }
-    setAddingMachine(true);
-    setMachineMsg('');
+    if (!newMachine.machineCode || !newMachine.location) return;
+    setSaving(true);
     try {
-      const res = await addMachine(newMachine);
-      setMachines((prev) => [...prev, res.data]);
-      setNewMachine({ machine_code: '', location: '', area: '' });
-      setMachineMsg('✅ Machine added!');
+      await addMachine(newMachine);
+      setNewMachine({ machineCode: '', name: '', location: '', area: '', status: 'active' });
+      setStatusMsg('Machine added with QR');
+      await loadAll();
     } catch (err) {
-      setMachineMsg(err.response?.data?.error || '❌ Failed to add machine');
+      setStatusMsg(err.response?.data?.error || 'Failed to add machine');
     } finally {
-      setAddingMachine(false);
+      setSaving(false);
     }
   }
 
-  async function toggleMachineStatus(machine) {
-    const newStatus = machine.status === 'active' ? 'inactive' : 'active';
+  function setMachineDraft(id, key, value) {
+    setMachines((prev) => prev.map((m) => (m.id === id ? { ...m, _draft: { ...m._draft, [key]: value } } : m)));
+  }
+
+  async function saveMachine(machine) {
+    setSaving(true);
     try {
-      await updateMachine(machine.id, { status: newStatus });
-      setMachines((prev) =>
-        prev.map((m) => (m.id === machine.id ? { ...m, status: newStatus } : m))
-      );
-    } catch {
-      alert('Failed to update machine status');
+      await updateMachine(machine.id, machine._draft);
+      setEditingMachineId(null);
+      setStatusMsg(`Machine ${machine.machineCode || machine.machine_code} updated`);
+      await loadAll();
+    } catch (err) {
+      setStatusMsg(err.response?.data?.error || 'Failed to update machine');
+    } finally {
+      setSaving(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-60">
-        <RefreshCcw size={24} className="animate-spin text-orange-500" />
-      </div>
+  async function removeMachine(id) {
+    if (!confirm('Soft-delete this machine?')) return;
+    setSaving(true);
+    try {
+      await deleteMachine(id);
+      setStatusMsg('Machine disabled');
+      await loadAll();
+    } catch (_err) {
+      setStatusMsg('Failed to delete machine');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function regenMachineQR(id) {
+    setSaving(true);
+    try {
+      await regenerateMachineQR(id);
+      setStatusMsg('QR regenerated');
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runBulkQR() {
+    setSaving(true);
+    try {
+      await generateAllMachineQR();
+      setStatusMsg('Generated all QR codes');
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function downloadZip() {
+    const res = await downloadAllMachineQR();
+    const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'qr-codes.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(blobUrl);
+  }
+
+  async function createForm() {
+    if (!newForm.type || !newForm.label) return;
+    setSaving(true);
+    try {
+      await createFormConfig({
+        type: newForm.type.toLowerCase().trim(),
+        label: newForm.label.trim(),
+        fields: [],
+        is_enabled: true,
+      });
+      setNewForm({ type: '', label: '' });
+      await loadAll();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveForm(formId, patch) {
+    await updateFormConfig(formId, patch);
+    await loadAll();
+  }
+
+  async function removeForm(id) {
+    if (!confirm('Delete this form type?')) return;
+    await deleteFormConfig(id);
+    await loadAll();
+  }
+
+  function updateField(formId, index, key, value) {
+    setForms((prev) =>
+      prev.map((f) => {
+        if (f.id !== formId) return f;
+        const fields = Array.isArray(f.fields) ? [...f.fields] : [];
+        fields[index] = { ...fields[index], [key]: value };
+        return { ...f, fields };
+      })
     );
   }
 
-  return (
-    <div className="p-4 lg:p-8 max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Syne, sans-serif' }}>
-          Form Builder & Settings
-        </h1>
-        <p className="text-gray-500 text-sm mt-0.5">
-          Manage forms, weekly config, and machine list
-        </p>
-      </div>
-
-      {/* ── Form toggles ─────────────────────────────── */}
-      <section>
-        <h2 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-          <Settings2 size={18} className="text-orange-500" /> Form Controls
-        </h2>
-        <div className="space-y-3">
-          {forms.map((form) => (
-            <FormCard
-              key={form.id}
-              form={form}
-              expanded={expandedForm === form.id}
-              onToggleExpand={() =>
-                setExpandedForm(expandedForm === form.id ? null : form.id)
-              }
-              onToggleEnabled={() => toggleForm(form)}
-              onSaveLabel={(label) => saveLabelChange(form, label)}
-              saving={saving[form.id]}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* ── Weekly Feedback Config ────────────────────── */}
-      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <Calendar size={18} className="text-blue-500" /> Weekly Feedback Title
-        </h2>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Title / Date Range
-            </label>
-            <input
-              type="text"
-              value={weeklyForm.title}
-              onChange={(e) => setWeeklyForm((p) => ({ ...p, title: e.target.value }))}
-              placeholder="e.g. Mar 30 – Apr 5, 2025"
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm input-brand bg-gray-50"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Start Date</label>
-              <input
-                type="date"
-                value={weeklyForm.start_date}
-                onChange={(e) => setWeeklyForm((p) => ({ ...p, start_date: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm input-brand bg-gray-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">End Date</label>
-              <input
-                type="date"
-                value={weeklyForm.end_date}
-                onChange={(e) => setWeeklyForm((p) => ({ ...p, end_date: e.target.value }))}
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm input-brand bg-gray-50"
-              />
-            </div>
-          </div>
-
-          <button
-            onClick={saveWeekly}
-            disabled={saving.weekly}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm transition-all disabled:opacity-60"
-            style={{ background: 'linear-gradient(135deg, #FF6B00, #FFB800)' }}
-          >
-            {saving.weekly
-              ? <><RefreshCcw size={14} className="animate-spin" /> Saving...</>
-              : <><Save size={14} /> Save Config</>
+  function addField(formId) {
+    setForms((prev) =>
+      prev.map((f) =>
+        f.id === formId
+          ? {
+              ...f,
+              fields: [...(Array.isArray(f.fields) ? f.fields : []), { name: '', label: '', type: 'text', required: false, placeholder: '' }],
             }
-          </button>
+          : f
+      )
+    );
+  }
 
-          {weeklyMsg && (
-            <p className="text-sm font-medium">{weeklyMsg}</p>
-          )}
-        </div>
-      </section>
+  function deleteField(formId, index) {
+    setForms((prev) =>
+      prev.map((f) => {
+        if (f.id !== formId) return f;
+        return { ...f, fields: (f.fields || []).filter((_, i) => i !== index) };
+      })
+    );
+  }
 
-      {/* ── Machines Management ───────────────────────── */}
-      <section className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h2 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <MapPin size={18} className="text-green-500" /> Vending Machines ({machines.length})
-        </h2>
-
-        {/* Add new machine */}
-        <div className="bg-orange-50 rounded-xl p-4 mb-5 border border-orange-100">
-          <p className="text-sm font-semibold text-orange-800 mb-3">Add New Machine</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-            <input
-              type="text"
-              value={newMachine.machine_code}
-              onChange={(e) => setNewMachine((p) => ({ ...p, machine_code: e.target.value }))}
-              placeholder="Code (e.g. SM-2118)"
-              className="border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white input-brand"
-            />
-            <input
-              type="text"
-              value={newMachine.location}
-              onChange={(e) => setNewMachine((p) => ({ ...p, location: e.target.value }))}
-              placeholder="Location"
-              className="border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white input-brand"
-            />
-            <input
-              type="text"
-              value={newMachine.area}
-              onChange={(e) => setNewMachine((p) => ({ ...p, area: e.target.value }))}
-              placeholder="Area (optional)"
-              className="border border-orange-200 rounded-xl px-3 py-2 text-sm bg-white input-brand"
-            />
-          </div>
-          <button
-            onClick={handleAddMachine}
-            disabled={addingMachine}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-white text-sm disabled:opacity-60"
-            style={{ background: 'linear-gradient(135deg, #FF6B00, #FFB800)' }}
-          >
-            {addingMachine
-              ? <><RefreshCcw size={13} className="animate-spin" /> Adding...</>
-              : <><Plus size={13} /> Add Machine</>
-            }
-          </button>
-          {machineMsg && <p className="text-xs mt-2 font-medium">{machineMsg}</p>}
-        </div>
-
-        {/* Machine list */}
-        <div className="space-y-2 max-h-80 overflow-y-auto">
-          {machines.map((m) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100"
-            >
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-800 text-sm">{m.machine_code}</p>
-                <p className="text-gray-500 text-xs truncate">{m.location}</p>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <a
-                  href={`/machine/${m.machine_code}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-500 hover:underline"
-                >
-                  Preview
-                </a>
-                <button
-                  onClick={() => toggleMachineStatus(m)}
-                  className={`text-xs px-2.5 py-1 rounded-full font-semibold transition-all ${
-                    m.status === 'active'
-                      ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
-                      : 'bg-red-100 text-red-700 hover:bg-green-100 hover:text-green-700'
-                  }`}
-                >
-                  {m.status === 'active' ? '● Active' : '○ Inactive'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-// ─── Form Card ─────────────────────────────────────────────────────────────
-function FormCard({ form, expanded, onToggleExpand, onToggleEnabled, onSaveLabel, saving }) {
-  const [labelEdit, setLabelEdit] = useState(form.label);
-  const [labelChanged, setLabelChanged] = useState(false);
+  if (loading) return <div className="flex justify-center items-center h-60"><RefreshCcw size={24} className="animate-spin text-orange-500" /></div>;
 
   return (
-    <div className={`bg-white rounded-2xl border-2 transition-all shadow-sm ${
-      form.is_enabled ? 'border-orange-200' : 'border-gray-200 opacity-60'
-    }`}>
-      <div className="flex items-center gap-3 p-4">
-        <span className="text-2xl">{TYPE_ICONS[form.type] || '📝'}</span>
+    <div className="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold text-gray-900">Admin Control Center</h1>
+      {!!statusMsg && <p className="text-sm text-gray-600">{statusMsg}</p>}
 
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-gray-800 text-sm">{form.label}</p>
-          <p className="text-gray-400 text-xs capitalize">{form.type} form · Order #{form.display_order}</p>
+      <section className="bg-white rounded-2xl p-5 border border-gray-100">
+        <h2 className="font-semibold mb-3 flex items-center gap-2"><Calendar size={16} /> Weekly Feedback Config</h2>
+        <div className="grid md:grid-cols-3 gap-3">
+          <input className="border rounded-xl px-3 py-2 text-sm" value={weeklyForm.title} onChange={(e) => setWeeklyForm((p) => ({ ...p, title: e.target.value }))} placeholder="Title" />
+          <input className="border rounded-xl px-3 py-2 text-sm" type="date" value={weeklyForm.start_date} onChange={(e) => setWeeklyForm((p) => ({ ...p, start_date: e.target.value }))} />
+          <input className="border rounded-xl px-3 py-2 text-sm" type="date" value={weeklyForm.end_date} onChange={(e) => setWeeklyForm((p) => ({ ...p, end_date: e.target.value }))} />
         </div>
+        <button onClick={saveWeekly} disabled={saving} className="mt-3 px-4 py-2 text-sm rounded-xl bg-orange-600 text-white">Save</button>
+      </section>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onToggleEnabled}
-            disabled={saving}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              form.is_enabled
-                ? 'bg-green-100 text-green-700 hover:bg-red-100 hover:text-red-700'
-                : 'bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-700'
-            }`}
-          >
-            {saving ? <RefreshCcw size={12} className="animate-spin" /> : null}
-            {form.is_enabled ? '● Enabled' : '○ Disabled'}
-          </button>
-
-          <button
-            onClick={onToggleExpand}
-            className="p-1.5 text-gray-400 hover:text-gray-600 transition-all"
-          >
-            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="border-t border-gray-100 p-4 space-y-4">
-          {/* Edit label */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              Form Label (shown to users)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={labelEdit}
-                onChange={(e) => {
-                  setLabelEdit(e.target.value);
-                  setLabelChanged(e.target.value !== form.label);
-                }}
-                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm input-brand bg-gray-50"
-              />
-              {labelChanged && (
-                <button
-                  onClick={() => { onSaveLabel(labelEdit); setLabelChanged(false); }}
-                  className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg, #FF6B00, #FFB800)' }}
-                >
-                  <Save size={12} /> Save
-                </button>
-              )}
-            </div>
+      <section className="bg-white rounded-2xl p-5 border border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 className="font-semibold flex items-center gap-2"><MapPin size={16} /> Machine Management ({machines.length})</h2>
+          <div className="flex gap-2">
+            <button onClick={runBulkQR} className="px-3 py-2 rounded-xl border text-sm">Generate All QR</button>
+            <button onClick={downloadZip} className="px-3 py-2 rounded-xl border text-sm">Download All (ZIP)</button>
           </div>
+        </div>
 
-          {/* Field list (read-only view) */}
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-2">Fields ({form.fields?.length || 0})</p>
-            <div className="space-y-1.5">
-              {(form.fields || []).map((field, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                  <span className="text-xs text-gray-400 w-5">{idx + 1}.</span>
-                  <span className="text-xs font-medium text-gray-700 flex-1">{field.label}</span>
-                  <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">{field.type}</span>
-                  {field.required && (
-                    <span className="text-xs text-red-500 font-semibold">*req</span>
-                  )}
+        <div className="grid md:grid-cols-5 gap-2 mb-3">
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="machineCode" value={newMachine.machineCode} onChange={(e) => setNewMachine((p) => ({ ...p, machineCode: e.target.value }))} />
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="name" value={newMachine.name} onChange={(e) => setNewMachine((p) => ({ ...p, name: e.target.value }))} />
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="location" value={newMachine.location} onChange={(e) => setNewMachine((p) => ({ ...p, location: e.target.value }))} />
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="area" value={newMachine.area || ''} onChange={(e) => setNewMachine((p) => ({ ...p, area: e.target.value }))} />
+          <button onClick={handleAddMachine} disabled={saving} className="rounded-xl bg-orange-600 text-white text-sm"><Plus size={14} className="inline mr-1" />Add</button>
+        </div>
+
+        <div className="space-y-3">
+          {machines.map((m) => {
+            const draft = m._draft || m;
+            const qrUrl = m.qrCodeUrl ? `${API_URL}${m.qrCodeUrl}` : '';
+            const editing = editingMachineId === m.id;
+            return (
+              <div key={m.id} className="border rounded-xl p-3">
+                <div className="grid md:grid-cols-8 gap-2 items-center">
+                  <input disabled={!editing} className="border rounded px-2 py-1 text-sm" value={draft.machineCode || draft.machine_code || ''} onChange={(e) => setMachineDraft(m.id, 'machineCode', e.target.value)} />
+                  <input disabled={!editing} className="border rounded px-2 py-1 text-sm" value={draft.name || ''} onChange={(e) => setMachineDraft(m.id, 'name', e.target.value)} />
+                  <input disabled={!editing} className="border rounded px-2 py-1 text-sm" value={draft.location || ''} onChange={(e) => setMachineDraft(m.id, 'location', e.target.value)} />
+                  <input disabled={!editing} className="border rounded px-2 py-1 text-sm" value={draft.area || ''} onChange={(e) => setMachineDraft(m.id, 'area', e.target.value)} />
+                  <select disabled={!editing} className="border rounded px-2 py-1 text-sm" value={draft.status || 'active'} onChange={(e) => setMachineDraft(m.id, 'status', e.target.value)}>
+                    <option value="active">active</option>
+                    <option value="inactive">inactive</option>
+                  </select>
+                  <div className="flex gap-2 items-center">
+                    {qrUrl ? <img src={qrUrl} alt={`${m.machineCode} qr`} className="h-10 w-10 border rounded" /> : <QrCode size={18} />}
+                    {qrUrl && <a href={qrUrl} download className="text-xs underline">Download QR</a>}
+                  </div>
+                  <button onClick={() => regenMachineQR(m.id)} className="text-xs border rounded px-2 py-1">Regenerate QR</button>
+                  <div className="flex gap-2">
+                    {editing ? (
+                      <button onClick={() => saveMachine(m)} className="text-xs bg-green-600 text-white rounded px-2 py-1">Save</button>
+                    ) : (
+                      <button onClick={() => setEditingMachineId(m.id)} className="text-xs border rounded px-2 py-1">Edit</button>
+                    )}
+                    <button onClick={() => removeMachine(m.id)} className="text-xs bg-red-50 text-red-700 rounded px-2 py-1"><Trash2 size={12} className="inline mr-1" />Delete</button>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            );
+          })}
         </div>
-      )}
+      </section>
+
+      <section className="bg-white rounded-2xl p-5 border border-gray-100">
+        <h2 className="font-semibold mb-3 flex items-center gap-2"><Settings2 size={16} /> Dynamic Form Builder</h2>
+        <div className="grid md:grid-cols-3 gap-2 mb-4">
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="form type (refund_custom)" value={newForm.type} onChange={(e) => setNewForm((p) => ({ ...p, type: e.target.value }))} />
+          <input className="border rounded-xl px-3 py-2 text-sm" placeholder="label" value={newForm.label} onChange={(e) => setNewForm((p) => ({ ...p, label: e.target.value }))} />
+          <button onClick={createForm} className="rounded-xl bg-orange-600 text-white text-sm">Create Form</button>
+        </div>
+
+        <div className="space-y-4">
+          {forms.map((form) => (
+            <div key={form.id} className="border rounded-xl p-3">
+              <div className="grid md:grid-cols-5 gap-2 items-center mb-2">
+                <input className="border rounded px-2 py-1 text-sm" value={form.type} onChange={(e) => setForms((prev) => prev.map((f) => (f.id === form.id ? { ...f, type: e.target.value } : f)))} />
+                <input className="border rounded px-2 py-1 text-sm" value={form.label} onChange={(e) => setForms((prev) => prev.map((f) => (f.id === form.id ? { ...f, label: e.target.value } : f)))} />
+                <label className="text-sm"><input type="checkbox" checked={!!form.is_enabled} onChange={(e) => setForms((prev) => prev.map((f) => (f.id === form.id ? { ...f, is_enabled: e.target.checked } : f)))} /> enabled</label>
+                <button onClick={() => saveForm(form.id, { label: form.label, is_enabled: form.is_enabled, fields: form.fields })} className="text-sm border rounded px-3 py-1"><Save size={14} className="inline mr-1" />Save Form</button>
+                <button onClick={() => removeForm(form.id)} className="text-sm bg-red-50 text-red-700 rounded px-3 py-1">Delete Form</button>
+              </div>
+
+              <div className="space-y-2">
+                {(form.fields || []).map((field, idx) => (
+                  <div key={`${form.id}-${idx}`} className="grid md:grid-cols-7 gap-2">
+                    <input className="border rounded px-2 py-1 text-xs" placeholder="name" value={field.name || ''} onChange={(e) => updateField(form.id, idx, 'name', e.target.value)} />
+                    <input className="border rounded px-2 py-1 text-xs" placeholder="label" value={field.label || ''} onChange={(e) => updateField(form.id, idx, 'label', e.target.value)} />
+                    <select className="border rounded px-2 py-1 text-xs" value={field.type || 'text'} onChange={(e) => updateField(form.id, idx, 'type', e.target.value)}>
+                      {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <input className="border rounded px-2 py-1 text-xs" placeholder="placeholder" value={field.placeholder || ''} onChange={(e) => updateField(form.id, idx, 'placeholder', e.target.value)} />
+                    <input className="border rounded px-2 py-1 text-xs" placeholder="options: a,b,c" value={Array.isArray(field.options) ? field.options.join(',') : ''} onChange={(e) => updateField(form.id, idx, 'options', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))} />
+                    <label className="text-xs"><input type="checkbox" checked={!!field.required} onChange={(e) => updateField(form.id, idx, 'required', e.target.checked)} /> required</label>
+                    <button onClick={() => deleteField(form.id, idx)} className="text-xs bg-red-50 text-red-700 rounded px-2 py-1">Remove</button>
+                  </div>
+                ))}
+                <button onClick={() => addField(form.id)} className="text-xs border rounded px-2 py-1">+ Add Field</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

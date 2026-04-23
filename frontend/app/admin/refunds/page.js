@@ -28,9 +28,9 @@ export default function RefundsPage() {
 
   async function markCompleted(id) {
     try {
-      await updateSubmission(id, { status: 'completed' });
+      await updateSubmission(id, { status: 'completed', refund_status: 'completed' });
       setRefunds((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status: 'completed' } : r))
+        prev.map((r) => (r.id === id ? { ...r, status: 'completed', refund_status: 'completed' } : r))
       );
     } catch {
       alert('Failed to update');
@@ -45,6 +45,17 @@ export default function RefundsPage() {
       );
     } catch {
       alert('Failed to update');
+    }
+  }
+
+  async function updateRefundStatus(id, refund_status) {
+    try {
+      await updateSubmission(id, { refund_status });
+      setRefunds((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, refund_status } : r))
+      );
+    } catch {
+      alert('Failed to update refund status');
     }
   }
 
@@ -122,6 +133,7 @@ export default function RefundsPage() {
               refund={refund}
               onMarkCompleted={() => markCompleted(refund.id)}
               onUpdateWA={(status) => updateWAStatus(refund.id, status)}
+              onUpdateRefundStatus={(status) => updateRefundStatus(refund.id, status)}
             />
           ))}
           {!filtered.length && (
@@ -135,7 +147,7 @@ export default function RefundsPage() {
   );
 }
 
-function RefundCard({ refund, onMarkCompleted, onUpdateWA }) {
+function RefundCard({ refund, onMarkCompleted, onUpdateWA, onUpdateRefundStatus }) {
   const { data = {} } = refund;
   const waLink = buildWhatsAppLink(
     'refund',
@@ -214,6 +226,16 @@ function RefundCard({ refund, onMarkCompleted, onUpdateWA }) {
           </button>
         )}
 
+        <select
+          value={refund.refund_status || 'pending'}
+          onChange={(e) => onUpdateRefundStatus(e.target.value)}
+          className="text-xs px-2.5 py-2 rounded-xl border font-medium input-brand"
+        >
+          <option value="pending">Refund Pending</option>
+          <option value="processing">Refund Processing</option>
+          <option value="completed">Refund Completed</option>
+        </select>
+
         {/* WA status */}
         <select
           value={refund.whatsapp_status}
@@ -229,6 +251,12 @@ function RefundCard({ refund, onMarkCompleted, onUpdateWA }) {
       <p className="text-xs text-gray-400 mt-3">
         {new Date(refund.created_at).toLocaleString('en-IN')}
       </p>
+      <textarea
+        defaultValue={refund.admin_remarks || ''}
+        onBlur={(e) => updateSubmission(refund.id, { admin_remarks: e.target.value })}
+        className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-xs"
+        placeholder="Admin remarks"
+      />
     </div>
   );
 }

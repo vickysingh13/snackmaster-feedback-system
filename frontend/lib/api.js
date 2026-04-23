@@ -35,7 +35,8 @@ api.interceptors.response.use(
 export default api;
 
 // Public API
-export const fetchMachine = (id) => api.get(`/machine/${id}`);
+export const fetchMachine = (machineCode) =>
+  api.get(`/machine/${encodeURIComponent(String(machineCode).trim())}`);
 export const submitForm = (data) => api.post('/submit', data);
 
 // Admin API
@@ -52,10 +53,17 @@ export const fetchMachines = () => api.get('/admin/machines');
 export const addMachine = (data) => api.post('/admin/machines', data);
 export const updateMachine = (id, data) =>
   api.patch(`/admin/machines/${id}`, data);
+export const deleteMachine = (id) => api.delete(`/admin/machines/${id}`);
+export const regenerateMachineQR = (id) => api.post(`/admin/machines/${id}/regenerate-qr`);
+export const generateAllMachineQR = () => api.post('/admin/machines/generate-all-qr');
+export const downloadAllMachineQR = () =>
+  api.get('/admin/machines/download-all-qr', { responseType: 'blob' });
 
 export const fetchFormConfigs = () => api.get('/admin/form-configs');
+export const createFormConfig = (data) => api.post('/admin/form-configs', data);
 export const updateFormConfig = (id, data) =>
   api.patch(`/admin/form-configs/${id}`, data);
+export const deleteFormConfig = (id) => api.delete(`/admin/form-configs/${id}`);
 
 export const fetchWeeklyConfig = () => api.get('/admin/weekly-config');
 export const updateWeeklyConfig = (data) =>

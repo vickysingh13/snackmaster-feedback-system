@@ -10,9 +10,12 @@ datasource db {
 model Machine {
   id          Int          @id @default(autoincrement())
   machineCode String       @unique @map("machine_code") @db.VarChar(20)
+  name        String?      @db.VarChar(255)
   location    String       @db.VarChar(255)
   area        String?      @db.VarChar(100)
+  qrCodeUrl   String?      @map("qr_code_url") @db.VarChar(255)
   status      String?      @default("active") @db.VarChar(20)
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamp(6)
   createdAt   DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
   submissions Submission[]
 
@@ -26,6 +29,9 @@ model Submission {
   data           Json      @default("{}")
   status         String?   @default("pending") @db.VarChar(30)
   whatsappStatus String?   @default("not_contacted") @map("whatsapp_status") @db.VarChar(30)
+  adminNotes     String?   @map("admin_notes")
+  refundStatus   String?   @default("pending") @map("refund_status") @db.VarChar(30)
+  adminRemarks   String?   @map("admin_remarks")
   notes          String?
   createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 SnackMaster QR Code Generator
-Generates QR codes for all 17 vending machines.
+Generates QR codes for all configured vending machines.
 
 Install dependencies:
     pip install qrcode[pil] pillow
@@ -28,23 +28,21 @@ except ImportError:
 
 # ─── Machine data ────────────────────────────────────────────────────
 MACHINES = [
-    {"code": "SM-2101", "location": "Hitech City Metro Station - Gate 1"},
-    {"code": "SM-2102", "location": "Madhapur Bus Stop - Bay 3"},
-    {"code": "SM-2103", "location": "Gachibowli Stadium Entrance"},
-    {"code": "SM-2104", "location": "Kondapur Junction - Reliance Fresh"},
-    {"code": "SM-2105", "location": "Raidurg Metro Station - Exit B"},
-    {"code": "SM-2106", "location": "DLF Cybercity Building 5 Lobby"},
-    {"code": "SM-2107", "location": "Mindspace IT Park - Food Court"},
-    {"code": "SM-2108", "location": "Jubilee Hills Road No. 36 - Forum Mall"},
-    {"code": "SM-2109", "location": "Banjara Hills Road 10 - KFC Corner"},
-    {"code": "SM-2110", "location": "Ameerpet Metro Station - Platform 2"},
-    {"code": "SM-2111", "location": "Kukatpally Housing Board - Main Gate"},
-    {"code": "SM-2112", "location": "JNTU Hyderabad - Main Block Corridor"},
-    {"code": "SM-2113", "location": "Nallagandla Outer Ring Road - Petrol Pump"},
-    {"code": "SM-2114", "location": "Manikonda Village Main Road"},
-    {"code": "SM-2115", "location": "Financial District - Building 12 Lobby"},
-    {"code": "SM-2116", "location": "Kokapet Growth Corridor - Parking Block A"},
-    {"code": "SM-2117", "location": "Nanakramguda IT Hub - Reception"},
+    {"code": "2143", "location": "WIPRO GOPANPALLY - GROUND FLOOR"},
+    {"code": "2144", "location": "WIPRO MANIKONDA 5 - GROUND FLOOR"},
+    {"code": "2145", "location": "WIPRO MANIKONDA 4 - GROUND FLOOR"},
+    {"code": "2632", "location": "WIPRO GOPANPALLY 1 - GROUND FLOOR"},
+    {"code": "2633", "location": "WIPRO GOPANPALLY 2 - GROUND FLOOR"},
+    {"code": "2634", "location": "WIPRO GOPANPALLY 3 - GROUND FLOOR"},
+    {"code": "2642", "location": "WIPRO MANIKONDA 1 - 9TH FLOOR"},
+    {"code": "2643", "location": "WIPRO MANIKONDA 2 - 3RD FLOOR"},
+    {"code": "2644", "location": "WIPRO MANIKONDA 3 - GROUND FLOOR"},
+    {"code": "2645", "location": "WIPRO MANIKONDA 6 - GROUND FLOOR"},
+    {"code": "4772", "location": "DRAPER STARTUP HOUSE - GACHIBOWLI"},
+    {"code": "VV00006", "location": "HOTEL SAYINN - GROUND FLOOR"},
+    {"code": "vv00001", "location": "BOB - BANK OF BARODA GACHIBOWLI"},
+    {"code": "vv00002", "location": "IIRM - IIRM FINANCIAL DIST"},
+    {"code": "vv00003", "location": "UOH - UNIVERSITY OF HYDERABAD GACHIBOWLI"},
 ]
 
 BRAND_ORANGE = "#FF6B00"
@@ -147,8 +145,8 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default="qr_codes",
-        help="Output directory (default: ./qr_codes)",
+        default="qr-codes",
+        help="Output directory (default: ./qr-codes)",
     )
     args = parser.parse_args()
 
@@ -163,7 +161,7 @@ def main():
     for machine in MACHINES:
         code = machine["code"]
         url  = f"{base_url}/machine/{code}"
-        path = os.path.join(out_dir, f"QR_{code}.png")
+        path = os.path.join(out_dir, f"{code}.png")
         generate_qr(code, url, path)
 
     print(f"\n🎉 Done! {len(MACHINES)} QR codes saved to '{out_dir}/'")

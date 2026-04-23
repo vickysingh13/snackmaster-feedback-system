@@ -2,9 +2,36 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
+const QRCode = require('qrcode');
+const archiver = require('archiver');
 const pool = require('../db/pool');
 const prisma = require('../db/prisma');
 const authMiddleware = require('../middleware/auth');
+
+const QR_CODES_DIR = path.resolve(__dirname, '..', '..', 'qr-codes');
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL || 'https://snackmaster.io')
+  .replace(/\/+$/, '');
+
+function normalizeMachinePayload(body = {}) {
+  return {
+    machineCode: String(body.machineCode ?? body.machine_code ?? '').trim(),
+    name: body.name?.trim?.() || null,
+    location: String(body.location ?? '').trim(),
+    area: body.area?.trim?.() || null,
+    status: body.status === 'inactive' ? 'inactive' : 'active',
+  };
+}
+
+async function generateMachineQRCode(machineCode) {
+  fs.mkdirSync(QR_CODES_DIR, { recursive: true });
+  const fileName = `${machineCode}.png`;
+  const filePath = path.join(QR_CODES_DIR, fileName);
+  const machineUrl = `${PUBLIC_BASE_URL}/machine/${encodeURIComponent(machineCode)}`;
+  await QRCode.toFile(filePath, machineUrl, { width: 512, margin: 2 });
+  return `/qr-codes/${fileName}`;
+}
 
 // ─────────────────────────────────────────────
 // PUBLIC ROUTES
@@ -13,7 +40,10 @@ const authMiddleware = require('../middleware/auth');
 // Basic CRUD: Machines
 router.get('/machines', async (_req, res) => {
   try {
-    const machines = await prisma.machine.findMany({ orderBy: { id: 'asc' } });
+    const machines = await prisma.machine.findMany({
+      where: { deletedAt: null },
+      orderBy: { id: 'asc' },
+    });
     res.json(machines);
   } catch (err) {
     console.error('GET /machines error:', err);
@@ -37,17 +67,21 @@ router.get('/machines/:id', async (req, res) => {
 
 router.post('/machines', async (req, res) => {
   try {
-    const { machine_code, location, area, status } = req.body;
-    if (!machine_code || !location) {
-      return res.status(400).json({ error: 'machine_code and location required' });
+    const payload = normalizeMachinePayload(req.body);
+    if (!payload.machineCode || !payload.location) {
+      return res.status(400).json({ error: 'machineCode and location required' });
     }
+
+    const qrCodeUrl = await generateMachineQRCode(payload.machineCode);
 
     const machine = await prisma.machine.create({
       data: {
-        machineCode: machine_code,
-        location,
-        area: area || null,
-        status: status || 'active',
+        machineCode: payload.machineCode,
+        name: payload.name,
+        location: payload.location,
+        area: payload.area,
+        status: payload.status,
+        qrCodeUrl,
       },
     });
     res.status(201).json(machine);
@@ -63,14 +97,26 @@ router.put('/machines/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
 
-    const { machine_code, location, area, status } = req.body;
+    const payload = normalizeMachinePayload(req.body);
+    const existing = await prisma.machine.findUnique({ where: { id } });
+    if (!existing || existing.deletedAt) {
+      return res.status(404).json({ error: 'Machine not found' });
+    }
+
+    let qrCodeUrl;
+    if (payload.machineCode && payload.machineCode !== existing.machineCode) {
+      qrCodeUrl = await generateMachineQRCode(payload.machineCode);
+    }
+
     const machine = await prisma.machine.update({
       where: { id },
       data: {
-        ...(machine_code !== undefined ? { machineCode: machine_code } : {}),
-        ...(location !== undefined ? { location } : {}),
-        ...(area !== undefined ? { area } : {}),
-        ...(status !== undefined ? { status } : {}),
+        ...(payload.machineCode ? { machineCode: payload.machineCode } : {}),
+        ...(req.body.name !== undefined ? { name: payload.name } : {}),
+        ...(req.body.location !== undefined ? { location: payload.location } : {}),
+        ...(req.body.area !== undefined ? { area: payload.area } : {}),
+        ...(req.body.status !== undefined ? { status: payload.status } : {}),
+        ...(qrCodeUrl ? { qrCodeUrl } : {}),
       },
     });
     res.json(machine);
@@ -87,8 +133,11 @@ router.delete('/machines/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
 
-    await prisma.machine.delete({ where: { id } });
-    res.json({ success: true });
+    await prisma.machine.update({
+      where: { id },
+      data: { status: 'inactive', deletedAt: new Date() },
+    });
+    res.json({ success: true, softDeleted: true });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'Machine not found' });
     console.error('DELETE /machines/:id error:', err);
@@ -130,14 +179,24 @@ router.get('/submissions/:id', async (req, res) => {
 // GET /api/machine/:id — fetch machine info + active forms
 router.get('/machine/:id', async (req, res) => {
   try {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) {
-      return res.status(400).json({ message: 'Invalid machine id' });
+    const machineRef = String(req.params.id || '').trim();
+    if (!machineRef) return res.status(400).json({ message: 'Invalid machine id' });
+
+    // Prefer machineCode lookup so QR paths can use real IDs.
+    let machine = await prisma.machine.findFirst({
+      where: { machineCode: machineRef, deletedAt: null, status: 'active' },
+    });
+
+    // Backward compatibility: support numeric primary key URLs.
+    if (!machine) {
+      const numericId = Number(machineRef);
+      if (!Number.isNaN(numericId)) {
+        machine = await prisma.machine.findFirst({
+          where: { id: numericId, deletedAt: null, status: 'active' },
+        });
+      }
     }
 
-    const machine = await prisma.machine.findUnique({
-      where: { id },
-    });
     if (!machine) {
       return res.status(404).json({ message: 'Machine not found' });
     }
@@ -354,7 +413,7 @@ router.post('/admin/login', async (req, res) => {
 // GET /api/admin/submissions
 router.get('/admin/submissions', authMiddleware, async (req, res) => {
   try {
-    const { machine_id, type, status, page = 1, limit = 50 } = req.query;
+    const { machine_id, type, status, from_date, to_date, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
     let conditions = [];
@@ -373,11 +432,19 @@ router.get('/admin/submissions', authMiddleware, async (req, res) => {
       conditions.push(`s.status = $${idx++}`);
       params.push(status);
     }
+    if (from_date) {
+      conditions.push(`DATE(s.created_at) >= $${idx++}`);
+      params.push(from_date);
+    }
+    if (to_date) {
+      conditions.push(`DATE(s.created_at) <= $${idx++}`);
+      params.push(to_date);
+    }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
     const query = `
-      SELECT s.*, m.machine_code, m.location, m.area
+      SELECT s.*, m.machine_code, m.name, m.location, m.area, m.qr_code_url
       FROM submissions s
       LEFT JOIN machines m ON s.machine_id = m.id
       ${where}
@@ -413,7 +480,7 @@ router.get('/admin/submissions', authMiddleware, async (req, res) => {
 router.patch('/admin/submissions/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, whatsapp_status, notes } = req.body;
+    const { status, whatsapp_status, notes, admin_notes, refund_status, admin_remarks, data } = req.body;
 
     const updates = [];
     const params = [];
@@ -430,6 +497,22 @@ router.patch('/admin/submissions/:id', authMiddleware, async (req, res) => {
     if (notes !== undefined) {
       updates.push(`notes = $${idx++}`);
       params.push(notes);
+    }
+    if (admin_notes !== undefined) {
+      updates.push(`admin_notes = $${idx++}`);
+      params.push(admin_notes);
+    }
+    if (refund_status !== undefined) {
+      updates.push(`refund_status = $${idx++}`);
+      params.push(refund_status);
+    }
+    if (admin_remarks !== undefined) {
+      updates.push(`admin_remarks = $${idx++}`);
+      params.push(admin_remarks);
+    }
+    if (data !== undefined) {
+      updates.push(`data = $${idx++}`);
+      params.push(JSON.stringify(data));
     }
 
     if (updates.length === 0) {
@@ -458,8 +541,12 @@ router.patch('/admin/submissions/:id', authMiddleware, async (req, res) => {
 // GET /api/admin/machines
 router.get('/admin/machines', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM machines ORDER BY id ASC');
-    res.json(result.rows);
+    const includeDeleted = req.query.include_deleted === 'true';
+    const machines = await prisma.machine.findMany({
+      where: includeDeleted ? {} : { deletedAt: null },
+      orderBy: { id: 'asc' },
+    });
+    res.json(machines);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -468,17 +555,25 @@ router.get('/admin/machines', authMiddleware, async (req, res) => {
 // POST /api/admin/machines — add machine
 router.post('/admin/machines', authMiddleware, async (req, res) => {
   try {
-    const { machine_code, location, area, status } = req.body;
-    if (!machine_code || !location) {
-      return res.status(400).json({ error: 'machine_code and location required' });
+    const payload = normalizeMachinePayload(req.body);
+    if (!payload.machineCode || !payload.location) {
+      return res.status(400).json({ error: 'machineCode and location required' });
     }
-    const result = await pool.query(
-      'INSERT INTO machines (machine_code, location, area, status) VALUES ($1, $2, $3, $4) RETURNING *',
-      [machine_code, location, area || '', status || 'active']
-    );
-    res.status(201).json(result.rows[0]);
+    const qrCodeUrl = await generateMachineQRCode(payload.machineCode);
+    const machine = await prisma.machine.create({
+      data: {
+        machineCode: payload.machineCode,
+        name: payload.name,
+        location: payload.location,
+        area: payload.area,
+        status: payload.status,
+        qrCodeUrl,
+        deletedAt: null,
+      },
+    });
+    res.status(201).json(machine);
   } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ error: 'Machine code already exists' });
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Machine code already exists' });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -486,14 +581,130 @@ router.post('/admin/machines', authMiddleware, async (req, res) => {
 // PATCH /api/admin/machines/:id
 router.patch('/admin/machines/:id', authMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { location, area, status } = req.body;
-    const result = await pool.query(
-      'UPDATE machines SET location = COALESCE($1, location), area = COALESCE($2, area), status = COALESCE($3, status) WHERE id = $4 RETURNING *',
-      [location, area, status, id]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Machine not found' });
-    res.json(result.rows[0]);
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
+
+    const existing = await prisma.machine.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Machine not found' });
+
+    const payload = normalizeMachinePayload(req.body);
+    const nextCode = payload.machineCode || existing.machineCode;
+    const shouldRegenQr = req.body.regenerate_qr === true || nextCode !== existing.machineCode;
+    const qrCodeUrl = shouldRegenQr ? await generateMachineQRCode(nextCode) : undefined;
+
+    const machine = await prisma.machine.update({
+      where: { id },
+      data: {
+        ...(req.body.machineCode !== undefined || req.body.machine_code !== undefined
+          ? { machineCode: payload.machineCode }
+          : {}),
+        ...(req.body.name !== undefined ? { name: payload.name } : {}),
+        ...(req.body.location !== undefined ? { location: payload.location } : {}),
+        ...(req.body.area !== undefined ? { area: payload.area } : {}),
+        ...(req.body.status !== undefined ? { status: payload.status } : {}),
+        ...(req.body.deleted_at !== undefined
+          ? { deletedAt: req.body.deleted_at ? new Date(req.body.deleted_at) : null }
+          : {}),
+        ...(qrCodeUrl ? { qrCodeUrl } : {}),
+      },
+    });
+    res.json(machine);
+  } catch (err) {
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Machine code already exists' });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/admin/machines/:id', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
+
+    const machine = await prisma.machine.update({
+      where: { id },
+      data: { status: 'inactive', deletedAt: new Date() },
+    });
+    res.json({ success: true, machine });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Machine not found' });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/admin/machines/:id/regenerate-qr', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
+
+    const machine = await prisma.machine.findUnique({ where: { id } });
+    if (!machine || machine.deletedAt) return res.status(404).json({ error: 'Machine not found' });
+
+    const qrCodeUrl = await generateMachineQRCode(machine.machineCode);
+    const updated = await prisma.machine.update({
+      where: { id },
+      data: { qrCodeUrl },
+    });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/admin/machines/generate-all-qr', authMiddleware, async (_req, res) => {
+  try {
+    const machines = await prisma.machine.findMany({
+      where: { deletedAt: null },
+      orderBy: { id: 'asc' },
+    });
+
+    const updated = [];
+    for (const machine of machines) {
+      const qrCodeUrl = await generateMachineQRCode(machine.machineCode);
+      const record = await prisma.machine.update({
+        where: { id: machine.id },
+        data: { qrCodeUrl },
+      });
+      updated.push(record);
+    }
+
+    res.json({ success: true, count: updated.length, machines: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.get('/admin/machines/download-all-qr', authMiddleware, async (_req, res) => {
+  try {
+    fs.mkdirSync(QR_CODES_DIR, { recursive: true });
+    const machines = await prisma.machine.findMany({
+      where: { deletedAt: null },
+      orderBy: { id: 'asc' },
+    });
+
+    for (const machine of machines) {
+      const filePath = path.join(QR_CODES_DIR, `${machine.machineCode}.png`);
+      if (!fs.existsSync(filePath)) {
+        const qrCodeUrl = await generateMachineQRCode(machine.machineCode);
+        await prisma.machine.update({
+          where: { id: machine.id },
+          data: { qrCodeUrl },
+        });
+      }
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="qr-codes.zip"');
+    const zip = archiver('zip', { zlib: { level: 9 } });
+    zip.on('error', () => res.status(500).end());
+    zip.pipe(res);
+
+    for (const machine of machines) {
+      const filePath = path.join(QR_CODES_DIR, `${machine.machineCode}.png`);
+      if (fs.existsSync(filePath)) {
+        zip.file(filePath, { name: `${machine.machineCode}.png` });
+      }
+    }
+    zip.finalize();
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -505,6 +716,22 @@ router.get('/admin/form-configs', authMiddleware, async (req, res) => {
     const result = await pool.query('SELECT * FROM form_configs ORDER BY display_order ASC');
     res.json(result.rows);
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/admin/form-configs', authMiddleware, async (req, res) => {
+  try {
+    const { type, label, fields = [], is_enabled = true, display_order = 0 } = req.body;
+    if (!type || !label) return res.status(400).json({ error: 'type and label are required' });
+    const result = await pool.query(
+      `INSERT INTO form_configs (type, label, is_enabled, fields, display_order, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+      [String(type).trim(), String(label).trim(), !!is_enabled, JSON.stringify(fields), display_order]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ error: 'Form type already exists' });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -545,6 +772,17 @@ router.patch('/admin/form-configs/:id', authMiddleware, async (req, res) => {
     );
 
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/admin/form-configs/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM form_configs WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Form config not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

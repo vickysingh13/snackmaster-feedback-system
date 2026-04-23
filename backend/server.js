@@ -16,8 +16,12 @@ const app = express();
 const PORT = process.env.PORT || 5000; 
 
 app.use(helmet());
-app.use(cors()); // Simplified for local testing
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  credentials: true
+}));
 app.use(express.json());
+app.use('/qr-codes', express.static(path.join(__dirname, '..', 'qr-codes')));
 
 app.use('/api', apiRoutes);
 
@@ -39,6 +43,6 @@ async function bootstrapAdmin() {
 }
 
 app.listen(PORT, async () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
   await bootstrapAdmin();
 });

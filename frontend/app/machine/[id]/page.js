@@ -3,18 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchMachine, submitForm } from '../../../lib/api';
 
-const FORM_ORDER = ['complaint', 'refund', 'feedback', 'suggestion', 'rating'];
-
-const FORM_LABELS = {
-  complaint: 'Complaint',
-  refund: 'Refund',
-  feedback: 'Feedback',
-  suggestion: 'Suggestion',
-  rating: 'Rating',
-};
-
 export default function MachinePage({ params }) {
-  const { id } = params;
+  const machineCode = String(params?.id || '').trim();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [machine, setMachine] = useState(null);
@@ -33,13 +23,15 @@ export default function MachinePage({ params }) {
       try {
         setLoading(true);
         setError('');
-        const response = await fetchMachine(id);
+        const response = await fetchMachine(machineCode);
+
         if (!mounted) return;
 
         setMachine(response.data.machine);
         setForms(Array.isArray(response.data.forms) ? response.data.forms : []);
       } catch (err) {
         if (!mounted) return;
+
         if (err.response?.status === 404) {
           setError('Machine not found');
         } else {
@@ -54,12 +46,7 @@ export default function MachinePage({ params }) {
     return () => {
       mounted = false;
     };
-  }, [id]);
-
-  const orderedForms = useMemo(() => {
-    const byType = new Map(forms.map((form) => [form.type, form]));
-    return FORM_ORDER.map((type) => byType.get(type)).filter(Boolean);
-  }, [forms]);
+  }, [machineCode]);
 
   const selectedForm = useMemo(
     () => forms.find((form) => form.type === selectedFormType) || null,
@@ -121,6 +108,7 @@ export default function MachinePage({ params }) {
         data: { ...formData },
         machineId: machine.id,
       });
+
       setFormData({});
       setFieldErrors({});
     } catch (err) {
@@ -154,9 +142,11 @@ export default function MachinePage({ params }) {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-md px-4 py-6">
+
+        {/* Machine Info */}
         <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 mb-4">
           <h1 className="text-xl font-bold text-slate-900">
-            {machine?.machineCode || machine?.machine_code || `Machine ${id}`}
+            {machine?.machineCode || machine?.machine_code || `Machine ${machineCode}`}
           </h1>
           {(machine?.location || machine?.area) && (
             <p className="text-slate-600 mt-1">
@@ -166,10 +156,12 @@ export default function MachinePage({ params }) {
           )}
         </section>
 
+        {/* Form Selection */}
         <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 mb-4">
           <h2 className="text-base font-semibold text-slate-900 mb-3">Choose form type</h2>
+
           <div className="grid grid-cols-1 gap-2">
-            {(orderedForms.length > 0 ? orderedForms : forms).map((form) => (
+            {forms.map((form) => (
               <button
                 key={form.type}
                 type="button"
@@ -180,20 +172,22 @@ export default function MachinePage({ params }) {
                     : 'border-slate-200 bg-white text-slate-700'
                 }`}
               >
-                {FORM_LABELS[form.type] || form.label || form.type}
+                {form.label || form.type}
               </button>
             ))}
           </div>
         </section>
 
+        {/* Form Render */}
         {selectedForm && (
           <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              {selectedForm.label || FORM_LABELS[selectedForm.type] || 'Form'}
+              {selectedForm.label || selectedForm.type}
             </h3>
 
             {!!error && !!machine && <p className="mb-3 text-sm text-red-600">{error}</p>}
             {!!successMessage && <p className="mb-3 text-sm text-green-600">{successMessage}</p>}
+
             {submittedMeta?.formType === 'refund' && (
               <a
                 href={buildRefundWhatsAppLink(submittedMeta)}
@@ -250,7 +244,6 @@ function DynamicField({ field, value, error, onChange }) {
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder || ''}
-          inputMode={field.type === 'tel' ? 'numeric' : field.type === 'number' ? 'decimal' : 'text'}
         />
       )}
 
@@ -264,81 +257,30 @@ function DynamicField({ field, value, error, onChange }) {
       )}
 
       {field.type === 'select' && (
-        <select
-          className={baseInputClasses}
-          value={value || ''}
-          onChange={(e) => onChange(e.target.value)}
-        >
+        <select className={baseInputClasses} value={value || ''} onChange={(e) => onChange(e.target.value)}>
           <option value="">Select</option>
           {(field.options || []).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
+            <option key={option} value={option}>{option}</option>
           ))}
         </select>
       )}
 
-      {field.type === 'star_rating' && (
-        <div className="grid grid-cols-5 gap-2">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              type="button"
-              onClick={() => onChange(star)}
-              className={`rounded-lg py-3 text-base font-semibold border ${
-                Number(value) === star
-                  ? 'bg-orange-600 border-orange-600 text-white'
-                  : 'bg-white border-slate-300 text-slate-700'
-              }`}
-            >
-              {star}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {field.type === 'like_dislike' && (
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onChange('like')}
-            className={`rounded-lg py-3 text-base font-semibold border ${
-              value === 'like'
-                ? 'bg-green-600 border-green-600 text-white'
-                : 'bg-white border-slate-300 text-slate-700'
-            }`}
-          >
-            👍 Like
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange('dislike')}
-            className={`rounded-lg py-3 text-base font-semibold border ${
-              value === 'dislike'
-                ? 'bg-red-600 border-red-600 text-white'
-                : 'bg-white border-slate-300 text-slate-700'
-            }`}
-          >
-            👎 Dislike
-          </button>
-        </div>
-      )}
-
-      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
 }
 
-function buildRefundWhatsAppLink(submittedMeta) {
+function buildRefundWhatsAppLink(meta) {
   const phone = '919515033232';
-  const data = submittedMeta?.data || {};
-  const message =
-    `Refund Request:\n` +
-    `Machine: ${submittedMeta?.machineId ?? ''}\n` +
-    `Name: ${data.name ?? ''}\n` +
-    `Phone: ${data.phone ?? ''}\n` +
-    `Amount: ${data.amount ?? ''}\n` +
-    `Issue: ${data.description ?? ''}`;
+  const d = meta?.data || {};
 
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  const msg =
+    `Refund Request:\n` +
+    `Machine: ${meta.machineId}\n` +
+    `Name: ${d.name}\n` +
+    `Phone: ${d.phone}\n` +
+    `Amount: ${d.amount}\n` +
+    `Issue: ${d.description}`;
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 }

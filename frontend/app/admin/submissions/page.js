@@ -42,6 +42,8 @@ export default function SubmissionsPage() {
     machine_id: '',
     type: '',
     status: '',
+    from_date: '',
+    to_date: '',
   });
 
   useEffect(() => {
@@ -110,7 +112,7 @@ export default function SubmissionsPage() {
 
       {/* Filters */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-5">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <select
             value={filters.machine_id}
             onChange={(e) => setFilter('machine_id', e.target.value)}
@@ -145,11 +147,23 @@ export default function SubmissionsPage() {
             <option value="resolved">Resolved</option>
             <option value="completed">Completed</option>
           </select>
+          <input
+            type="date"
+            value={filters.from_date}
+            onChange={(e) => setFilter('from_date', e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-gray-50 input-brand"
+          />
+          <input
+            type="date"
+            value={filters.to_date}
+            onChange={(e) => setFilter('to_date', e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-gray-50 input-brand"
+          />
         </div>
 
-        {(filters.machine_id || filters.type || filters.status) && (
+        {(filters.machine_id || filters.type || filters.status || filters.from_date || filters.to_date) && (
           <button
-            onClick={() => { setFilters({ machine_id: '', type: '', status: '' }); setPage(1); }}
+            onClick={() => { setFilters({ machine_id: '', type: '', status: '', from_date: '', to_date: '' }); setPage(1); }}
             className="mt-2 flex items-center gap-1 text-xs text-orange-600 font-medium hover:underline"
           >
             <X size={12} /> Clear filters
@@ -422,6 +436,10 @@ function MobileSubmissionCard({ submission, onTap, onUpdate }) {
 }
 
 function SubmissionModal({ submission, onClose, onUpdate }) {
+  const [editableData, setEditableData] = useState(JSON.stringify(submission.data || {}, null, 2));
+  const [adminNotes, setAdminNotes] = useState(submission.admin_notes || '');
+  const [refundStatus, setRefundStatus] = useState(submission.refund_status || 'pending');
+  const [adminRemarks, setAdminRemarks] = useState(submission.admin_remarks || '');
   const meta = TYPE_META[submission.type] || { label: submission.type, icon: '📝' };
   const waLink = buildWhatsAppLink(
     submission.type,
@@ -482,6 +500,68 @@ function SubmissionModal({ submission, onClose, onUpdate }) {
               </select>
             </div>
           </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-semibold text-gray-500">Edit submission data (JSON)</p>
+            <textarea
+              className="w-full min-h-28 border border-gray-200 rounded-xl p-2 text-xs"
+              value={editableData}
+              onChange={(e) => setEditableData(e.target.value)}
+            />
+            <button
+              onClick={() => {
+                try {
+                  const parsed = JSON.parse(editableData);
+                  onUpdate({ data: parsed });
+                } catch (_err) {
+                  alert('Invalid JSON');
+                }
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border"
+            >
+              Save JSON
+            </button>
+          </div>
+
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs font-semibold text-gray-500">Admin Notes</p>
+            <textarea
+              className="w-full min-h-20 border border-gray-200 rounded-xl p-2 text-sm"
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+              placeholder="Internal notes"
+            />
+            <button onClick={() => onUpdate({ admin_notes: adminNotes })} className="text-xs px-3 py-1.5 rounded-lg border">
+              Save Notes
+            </button>
+          </div>
+
+          {submission.type === 'refund' && (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-xs font-semibold text-gray-500">Refund Controls</p>
+              <select
+                className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm"
+                value={refundStatus}
+                onChange={(e) => setRefundStatus(e.target.value)}
+              >
+                <option value="pending">pending</option>
+                <option value="processing">processing</option>
+                <option value="completed">completed</option>
+              </select>
+              <textarea
+                className="w-full min-h-20 border border-gray-200 rounded-xl p-2 text-sm"
+                value={adminRemarks}
+                onChange={(e) => setAdminRemarks(e.target.value)}
+                placeholder="Refund remarks"
+              />
+              <button
+                onClick={() => onUpdate({ refund_status: refundStatus, admin_remarks: adminRemarks })}
+                className="text-xs px-3 py-1.5 rounded-lg border"
+              >
+                Save Refund Update
+              </button>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex gap-3 pt-1">

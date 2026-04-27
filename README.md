@@ -312,7 +312,7 @@ https://wa.me/9515033232?text=*SnackMaster — Refund Request*
 
 ---
 
-## 🤝 Machine List (Seeded)
+## 🤝 Machine List (Seeded) example
 
 | Code | Location |
 |------|----------|

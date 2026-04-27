@@ -184,8 +184,8 @@ router.get('/machine/:id', async (req, res) => {
 
     // Try machine_code lookup first
     let machineRes = await pool.query(
-      'SELECT * FROM machines WHERE machine_code = $1 AND status = $2',
-      [machineRef, 'active']
+      'SELECT * FROM machines WHERE machine_code = $1',
+      [machineRef]
     );
 
     // Fallback to numeric ID lookup
@@ -193,8 +193,8 @@ router.get('/machine/:id', async (req, res) => {
       const numericId = Number(machineRef);
       if (!Number.isNaN(numericId)) {
         machineRes = await pool.query(
-          'SELECT * FROM machines WHERE id = $1 AND status = $2',
-          [numericId, 'active']
+          'SELECT * FROM machines WHERE id = $1',
+          [numericId]
         );
       }
     }

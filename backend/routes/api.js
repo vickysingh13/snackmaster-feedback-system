@@ -182,34 +182,55 @@ router.get('/machine/:id', async (req, res) => {
     const machineRef = String(req.params.id || '').trim();
     if (!machineRef) return res.status(400).json({ message: 'Invalid machine id' });
 
-    // Prefer machineCode lookup so QR paths can use real IDs.
-    let machine = await prisma.machine.findFirst({
-      where: { machineCode: machineRef, deletedAt: null, status: 'active' },
-    });
+    // Try machine_code lookup first
+    let machineRes = await pool.query(
+      'SELECT * FROM machines WHERE machine_code = $1 AND status = $2',
+      [machineRef, 'active']
+    );
 
-    // Backward compatibility: support numeric primary key URLs.
-    if (!machine) {
+    // Fallback to numeric ID lookup
+    if (machineRes.rows.length === 0) {
       const numericId = Number(machineRef);
       if (!Number.isNaN(numericId)) {
-        machine = await prisma.machine.findFirst({
-          where: { id: numericId, deletedAt: null, status: 'active' },
-        });
+        machineRes = await pool.query(
+          'SELECT * FROM machines WHERE id = $1 AND status = $2',
+          [numericId, 'active']
+        );
       }
     }
 
-    if (!machine) {
+    if (machineRes.rows.length === 0) {
       return res.status(404).json({ message: 'Machine not found' });
     }
 
-    const forms = await prisma.formConfig.findMany({
-      where: { isEnabled: true },
-      orderBy: { displayOrder: 'asc' },
-    });
+    const machineRow = machineRes.rows[0];
+    const machine = {
+      id: machineRow.id,
+      machineCode: machineRow.machine_code,
+      location: machineRow.location,
+      area: machineRow.area,
+      status: machineRow.status,
+      qrCodeUrl: machineRow.qr_code_url,
+      createdAt: machineRow.created_at
+    };
+
+    const formsRes = await pool.query(
+      'SELECT * FROM form_configs WHERE is_enabled = true ORDER BY display_order ASC'
+    );
+
+    const forms = formsRes.rows.map(row => ({
+      id: row.id,
+      type: row.type,
+      label: row.label,
+      isEnabled: row.is_enabled,
+      fields: row.fields,
+      displayOrder: row.display_order
+    }));
 
     return res.json({ machine, forms });
   } catch (err) {
-    console.error('GET /machine/:id error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('❌ MACHINE API ERROR:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

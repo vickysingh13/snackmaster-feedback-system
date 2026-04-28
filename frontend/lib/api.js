@@ -54,10 +54,6 @@ export const addMachine = (data) => api.post('/admin/machines', data);
 export const updateMachine = (id, data) =>
   api.patch(`/admin/machines/${id}`, data);
 export const deleteMachine = (id) => api.delete(`/admin/machines/${id}`);
-export const regenerateMachineQR = (id) => api.post(`/admin/machines/${id}/regenerate-qr`);
-export const generateAllMachineQR = () => api.post('/admin/machines/generate-all-qr');
-export const downloadAllMachineQR = () =>
-  api.get('/admin/machines/download-all-qr', { responseType: 'blob' });
 
 export const fetchFormConfigs = () => api.get('/admin/form-configs');
 export const createFormConfig = (data) => api.post('/admin/form-configs', data);

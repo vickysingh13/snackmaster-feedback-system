@@ -12,9 +12,6 @@ import {
   addMachine,
   updateMachine,
   deleteMachine,
-  regenerateMachineQR,
-  generateAllMachineQR,
-  downloadAllMachineQR,
 } from '../../../lib/api';
 import { RefreshCcw, Save, Plus, Calendar, Settings2, MapPin, Trash2, QrCode } from 'lucide-react';
 
@@ -123,40 +120,6 @@ export default function FormsPage() {
     }
   }
 
-  async function regenMachineQR(id) {
-    setSaving(true);
-    try {
-      await regenerateMachineQR(id);
-      setStatusMsg('QR regenerated');
-      await loadAll();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function runBulkQR() {
-    setSaving(true);
-    try {
-      await generateAllMachineQR();
-      setStatusMsg('Generated all QR codes');
-      await loadAll();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function downloadZip() {
-    const res = await downloadAllMachineQR();
-    const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/zip' }));
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = 'qr-codes.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(blobUrl);
-  }
-
   async function createForm() {
     if (!newForm.type || !newForm.label) return;
     setSaving(true);
@@ -238,10 +201,6 @@ export default function FormsPage() {
       <section className="bg-white rounded-2xl p-5 border border-gray-100">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="font-semibold flex items-center gap-2"><MapPin size={16} /> Machine Management ({machines.length})</h2>
-          <div className="flex gap-2">
-            <button onClick={runBulkQR} className="px-3 py-2 rounded-xl border text-sm">Generate All QR</button>
-            <button onClick={downloadZip} className="px-3 py-2 rounded-xl border text-sm">Download All (ZIP)</button>
-          </div>
         </div>
 
         <div className="grid md:grid-cols-5 gap-2 mb-3">
@@ -255,7 +214,9 @@ export default function FormsPage() {
         <div className="space-y-3">
           {machines.map((m) => {
             const draft = m._draft || m;
-            const qrUrl = m.qrCodeUrl ? `${API_URL}${m.qrCodeUrl}` : '';
+            const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3000';
+            const machineCode = draft.machineCode || draft.machine_code || '';
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${frontendUrl}/machine/${machineCode}`)}`;
             const editing = editingMachineId === m.id;
             return (
               <div key={m.id} className="border rounded-xl p-3">
@@ -268,11 +229,10 @@ export default function FormsPage() {
                     <option value="active">active</option>
                     <option value="inactive">inactive</option>
                   </select>
-                  <div className="flex gap-2 items-center">
-                    {qrUrl ? <img src={qrUrl} alt={`${m.machineCode} qr`} className="h-10 w-10 border rounded" /> : <QrCode size={18} />}
-                    {qrUrl && <a href={qrUrl} download className="text-xs underline">Download QR</a>}
+                  <div className="flex flex-col gap-1 items-start">
+                    <img src={qrUrl} alt={`${machineCode} qr`} className="h-10 w-10 border rounded" />
+                    <a href={qrUrl} download target="_blank" rel="noopener noreferrer" className="text-xs underline text-blue-600">Download</a>
                   </div>
-                  <button onClick={() => regenMachineQR(m.id)} className="text-xs border rounded px-2 py-1">Regenerate QR</button>
                   <div className="flex gap-2">
                     {editing ? (
                       <button onClick={() => saveMachine(m)} className="text-xs bg-green-600 text-white rounded px-2 py-1">Save</button>

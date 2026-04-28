@@ -21,8 +21,6 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use('/qr-codes', express.static(path.join(__dirname, '..', 'qr-codes')));
-
 app.use('/api', apiRoutes);
 
 async function bootstrapAdmin() {

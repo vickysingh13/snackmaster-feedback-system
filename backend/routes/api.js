@@ -180,6 +180,7 @@ router.get('/submissions/:id', async (req, res) => {
 router.get('/machine/:id', async (req, res) => {
   try {
     const machineRef = String(req.params.id || '').trim();
+    console.log('📍 GET /machine/:id - Incoming machine_id:', machineRef);
     if (!machineRef) return res.status(400).json({ message: 'Invalid machine id' });
 
     // Try machine_code lookup first
@@ -187,6 +188,7 @@ router.get('/machine/:id', async (req, res) => {
       'SELECT * FROM machines WHERE machine_code = $1',
       [machineRef]
     );
+    console.log('🔍 Query by machine_code result:', machineRes.rows.length, 'rows');
 
     // Fallback to numeric ID lookup
     if (machineRes.rows.length === 0) {
@@ -196,10 +198,12 @@ router.get('/machine/:id', async (req, res) => {
           'SELECT * FROM machines WHERE id = $1',
           [numericId]
         );
+        console.log('🔍 Query by numeric id result:', machineRes.rows.length, 'rows');
       }
     }
 
     if (machineRes.rows.length === 0) {
+      console.log('❌ Machine not found for machineRef:', machineRef);
       return res.status(404).json({ message: 'Machine not found' });
     }
 

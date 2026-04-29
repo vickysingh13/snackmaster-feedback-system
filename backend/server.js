@@ -22,7 +22,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://snackmaster-feedback-system.vercel.app',
-  'https://snackmaster-feedback-system-f7o66ytxc-vickysingh13s-projects.vercel.app'
+  'https://snackmaster-feedback-system-f7o66ytxc-vickysingh13s-projects.vercel.app',
+  'https://snackmaster.io',
+  'https://www.snackmaster.io'
 ];
 
 app.use(cors({

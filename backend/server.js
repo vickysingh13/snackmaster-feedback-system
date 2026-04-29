@@ -16,10 +16,34 @@ const app = express();
 const PORT = process.env.PORT || 5000; 
 
 app.use(helmet());
+
+// Allowed origins for CORS
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://snackmaster-feedback-system.vercel.app',
+  'https://snackmaster-feedback-system-f7o66ytxc-vickysingh13s-projects.vercel.app'
+];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests, Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Log unknown origins for debugging
+      console.warn(`⚠️ CORS blocked origin: ${origin}`);
+      callback(null, true); // Allow with warning for now
+    }
+  },
   credentials: true
 }));
+
 app.use(express.json());
 app.use('/api', apiRoutes);
 

@@ -207,7 +207,25 @@ router.get('/machine/:id', async (req, res) => {
       displayOrder: row.display_order
     }));
 
-    return res.json({ machine, forms });
+    // Fetch UI config for this machine
+    const uiConfigRes = await pool.query(
+      'SELECT * FROM machine_ui_configs WHERE machine_id = $1',
+      [machineRow.id]
+    );
+
+    const ui_config = uiConfigRes.rows.length > 0 ? {
+      id: uiConfigRes.rows[0].id,
+      machineId: uiConfigRes.rows[0].machine_id,
+      bannerMessage: uiConfigRes.rows[0].banner_message,
+      highlightText: uiConfigRes.rows[0].highlight_text,
+      imageUrl: uiConfigRes.rows[0].image_url,
+      pollQuestion: uiConfigRes.rows[0].poll_question,
+      pollOptions: uiConfigRes.rows[0].poll_options,
+      pollActive: uiConfigRes.rows[0].poll_active,
+      showWhatsapp: uiConfigRes.rows[0].show_whatsapp
+    } : null;
+
+    return res.json({ machine, forms, ui_config });
   } catch (err) {
     console.error('❌ MACHINE API ERROR:', err);
     res.status(500).json({ error: err.message });
@@ -626,6 +644,125 @@ router.delete('/admin/machines/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// MACHINE UI CONFIGS
+// ─────────────────────────────────────────────
+
+// GET /api/admin/machines/:id/ui-config
+router.get('/admin/machines/:id/ui-config', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
+
+    const result = await pool.query(
+      'SELECT * FROM machine_ui_configs WHERE machine_id = $1',
+      [id]
+    );
+
+    const ui_config = result.rows.length > 0 ? {
+      id: result.rows[0].id,
+      machineId: result.rows[0].machine_id,
+      bannerMessage: result.rows[0].banner_message,
+      highlightText: result.rows[0].highlight_text,
+      imageUrl: result.rows[0].image_url,
+      pollQuestion: result.rows[0].poll_question,
+      pollOptions: result.rows[0].poll_options,
+      pollActive: result.rows[0].poll_active,
+      showWhatsapp: result.rows[0].show_whatsapp
+    } : null;
+
+    res.json(ui_config);
+  } catch (err) {
+    console.error('Error fetching UI config:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/machines/:id/ui-config (upsert)
+router.post('/admin/machines/:id/ui-config', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid machine id' });
+
+    const {
+      banner_message,
+      highlight_text,
+      image_url,
+      poll_question,
+      poll_options,
+      poll_active,
+      show_whatsapp
+    } = req.body;
+
+    // Upsert: try update first, if no rows updated then insert
+    const updateResult = await pool.query(
+      `UPDATE machine_ui_configs SET
+        banner_message = $1,
+        highlight_text = $2,
+        image_url = $3,
+        poll_question = $4,
+        poll_options = $5,
+        poll_active = $6,
+        show_whatsapp = $7,
+        updated_at = NOW()
+       WHERE machine_id = $8
+       RETURNING *`,
+      [banner_message, highlight_text, image_url, poll_question, poll_options, poll_active, show_whatsapp, id]
+    );
+
+    let result = updateResult;
+
+    // If no rows updated, insert new config
+    if (result.rows.length === 0) {
+      result = await pool.query(
+        `INSERT INTO machine_ui_configs (machine_id, banner_message, highlight_text, image_url, poll_question, poll_options, poll_active, show_whatsapp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [id, banner_message, highlight_text, image_url, poll_question, poll_options, poll_active, show_whatsapp]
+      );
+    }
+
+    const row = result.rows[0];
+    const ui_config = {
+      id: row.id,
+      machineId: row.machine_id,
+      bannerMessage: row.banner_message,
+      highlightText: row.highlight_text,
+      imageUrl: row.image_url,
+      pollQuestion: row.poll_question,
+      pollOptions: row.poll_options,
+      pollActive: row.poll_active,
+      showWhatsapp: row.show_whatsapp
+    };
+
+    res.json(ui_config);
+  } catch (err) {
+    console.error('Error saving UI config:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/poll-response
+router.post('/poll-response', async (req, res) => {
+  try {
+    const { machine_id, selected_option } = req.body;
+    const machineId = Number(machine_id);
+
+    if (!machine_id || Number.isNaN(machineId) || !selected_option) {
+      return res.status(400).json({ error: 'machine_id and selected_option are required' });
+    }
+
+    await pool.query(
+      'INSERT INTO poll_responses (machine_id, option) VALUES ($1, $2)',
+      [machineId, selected_option]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving poll response:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // GET /api/admin/form-configs
 router.get('/admin/form-configs', authMiddleware, async (req, res) => {

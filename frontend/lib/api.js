@@ -66,3 +66,8 @@ export const updateWeeklyConfig = (data) =>
   api.put('/admin/weekly-config', data);
 
 export const fetchAnalytics = () => api.get('/admin/analytics');
+
+export const fetchMachineUiConfig = (machineId) =>
+  api.get(`/admin/machines/${machineId}/ui-config`);
+export const saveMachineUiConfig = (machineId, data) =>
+  api.post(`/admin/machines/${machineId}/ui-config`, data);

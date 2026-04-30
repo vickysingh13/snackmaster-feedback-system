@@ -18,8 +18,26 @@ model Machine {
   deletedAt   DateTime?    @map("deleted_at") @db.Timestamp(6)
   createdAt   DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
   submissions Submission[]
+  uiConfig    MachineUiConfig?
 
   @@map("machines")
+}
+
+model MachineUiConfig {
+  id              Int       @id @default(autoincrement())
+  machineId       Int       @unique @map("machine_id")
+  bannerMessage   String?   @map("banner_message") @db.Text
+  highlightText   String?   @map("highlight_text") @db.Text
+  imageUrl        String?   @map("image_url") @db.VarChar(500)
+  pollQuestion    String?   @map("poll_question") @db.Text
+  pollOptions     Json?     @default("[]") @map("poll_options")
+  pollActive      Boolean?  @default(false) @map("poll_active")
+  showWhatsapp    Boolean?  @default(true) @map("show_whatsapp")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  machine         Machine   @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@map("machine_ui_configs")
 }
 
 model Submission {
@@ -76,4 +94,14 @@ model WeeklyConfig {
   updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
 
   @@map("weekly_config")
+}
+
+model PollResponse {
+  id        Int       @id @default(autoincrement())
+  machineId Int       @map("machine_id")
+  option    String    @db.VarChar(255)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@index([machineId], map: "idx_poll_responses_machine_id")
+  @@map("poll_responses")
 }

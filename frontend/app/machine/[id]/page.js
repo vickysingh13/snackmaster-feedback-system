@@ -9,12 +9,14 @@ export default function MachinePage({ params }) {
   const [error, setError] = useState('');
   const [machine, setMachine] = useState(null);
   const [forms, setForms] = useState([]);
+  const [ui_config, setUiConfig] = useState(null);
   const [selectedFormType, setSelectedFormType] = useState('');
   const [formData, setFormData] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [submittedMeta, setSubmittedMeta] = useState(null);
+  const [pollSelected, setPollSelected] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -29,6 +31,7 @@ export default function MachinePage({ params }) {
 
         setMachine(response.data.machine);
         setForms(Array.isArray(response.data.forms) ? response.data.forms : []);
+        setUiConfig(response.data.ui_config || null);
       } catch (err) {
         if (!mounted) return;
 
@@ -156,6 +159,63 @@ export default function MachinePage({ params }) {
           )}
         </section>
 
+        {/* UI Config: Banner */}
+        {ui_config?.bannerMessage && (
+          <section className="rounded-2xl bg-blue-50 border border-blue-200 shadow-sm p-4 mb-4">
+            <p className="text-slate-900 font-medium">{ui_config.bannerMessage}</p>
+          </section>
+        )}
+
+        {/* UI Config: Highlight */}
+        {ui_config?.highlightText && (
+          <section className="rounded-2xl bg-yellow-50 border border-yellow-200 shadow-sm p-4 mb-4">
+            <p className="text-slate-900">{ui_config.highlightText}</p>
+          </section>
+        )}
+
+        {/* UI Config: Image */}
+        {ui_config?.imageUrl && (
+          <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 mb-4">
+            <img src={ui_config.imageUrl} alt="Machine display" className="w-full rounded-lg" />
+          </section>
+        )}
+
+        {/* UI Config: Poll */}
+        {ui_config?.pollActive && ui_config?.pollQuestion && Array.isArray(ui_config?.pollOptions) && ui_config.pollOptions.length > 0 && (
+          <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 mb-4">
+            <h3 className="text-base font-semibold text-slate-900 mb-3">{ui_config.pollQuestion}</h3>
+            <div className="space-y-2">
+              {ui_config.pollOptions.map((option, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={async () => {
+                    setPollSelected(option);
+                    try {
+                      await fetch('/api/poll-response', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ machine_id: machine?.id, selected_option: option })
+                      });
+                      setTimeout(() => setPollSelected(null), 1000);
+                    } catch (err) {
+                      console.error('Poll error:', err);
+                      setPollSelected(null);
+                    }
+                  }}
+                  className={`w-full rounded-lg border px-4 py-2 text-left text-sm transition ${
+                    pollSelected === option
+                      ? 'border-green-500 bg-green-50 text-green-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Form Selection */}
         <section className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 mb-4">
           <h2 className="text-base font-semibold text-slate-900 mb-3">Choose form type</h2>
@@ -188,7 +248,7 @@ export default function MachinePage({ params }) {
             {!!error && !!machine && <p className="mb-3 text-sm text-red-600">{error}</p>}
             {!!successMessage && <p className="mb-3 text-sm text-green-600">{successMessage}</p>}
 
-            {submittedMeta?.formType === 'refund' && (
+            {submittedMeta?.formType === 'refund' && (ui_config?.showWhatsapp !== false) && (
               <a
                 href={buildRefundWhatsAppLink(submittedMeta)}
                 target="_blank"

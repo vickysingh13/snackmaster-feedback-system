@@ -12,6 +12,8 @@ import {
   addMachine,
   updateMachine,
   deleteMachine,
+  fetchMachineUiConfig,
+  saveMachineUiConfig,
 } from '../../../lib/api';
 import { RefreshCcw, Save, Plus, Calendar, Settings2, MapPin, Trash2, QrCode } from 'lucide-react';
 
@@ -33,6 +35,8 @@ export default function FormsPage() {
   });
   const [newForm, setNewForm] = useState({ type: '', label: '' });
   const [editingMachineId, setEditingMachineId] = useState(null);
+  const [selectedMachineId, setSelectedMachineId] = useState(null);
+  const [uiConfig, setUiConfig] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => { loadAll(); }, []);
@@ -115,6 +119,38 @@ export default function FormsPage() {
       await loadAll();
     } catch (_err) {
       setStatusMsg('Failed to delete machine');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function loadUiConfig(machineId) {
+    try {
+      const res = await fetchMachineUiConfig(machineId);
+      setUiConfig(res.data || {});
+      setSelectedMachineId(machineId);
+    } catch (_err) {
+      setUiConfig({});
+      setSelectedMachineId(machineId);
+    }
+  }
+
+  async function saveUiConfig() {
+    if (!selectedMachineId) return;
+    setSaving(true);
+    try {
+      await saveMachineUiConfig(selectedMachineId, {
+        banner_message: uiConfig.bannerMessage,
+        highlight_text: uiConfig.highlightText,
+        image_url: uiConfig.imageUrl,
+        poll_question: uiConfig.pollQuestion,
+        poll_options: uiConfig.pollOptions ? uiConfig.pollOptions.split(',').map(o => o.trim()) : [],
+        poll_active: uiConfig.pollActive,
+        show_whatsapp: uiConfig.showWhatsapp
+      });
+      setStatusMsg('UI Config saved');
+    } catch (_err) {
+      setStatusMsg('Failed to save UI config');
     } finally {
       setSaving(false);
     }
@@ -237,7 +273,10 @@ export default function FormsPage() {
                     {editing ? (
                       <button onClick={() => saveMachine(m)} className="text-xs bg-green-600 text-white rounded px-2 py-1">Save</button>
                     ) : (
-                      <button onClick={() => setEditingMachineId(m.id)} className="text-xs border rounded px-2 py-1">Edit</button>
+                      <>
+                        <button onClick={() => setEditingMachineId(m.id)} className="text-xs border rounded px-2 py-1">Edit</button>
+                        <button onClick={() => loadUiConfig(m.id)} className="text-xs border rounded px-2 py-1">UI</button>
+                      </>
                     )}
                     <button onClick={() => removeMachine(m.id)} className="text-xs bg-red-50 text-red-700 rounded px-2 py-1"><Trash2 size={12} className="inline mr-1" />Delete</button>
                   </div>
@@ -247,6 +286,53 @@ export default function FormsPage() {
           })}
         </div>
       </section>
+
+      {selectedMachineId && (
+        <section className="bg-white rounded-2xl p-5 border border-gray-100">
+          <h2 className="font-semibold mb-4 flex items-center gap-2"><Settings2 size={16} /> Machine UI Settings (ID: {selectedMachineId})</h2>
+
+          <div className="space-y-4">
+            {/* Banner */}
+            <div>
+              <label className="text-sm font-medium">Banner Message</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm mt-1" placeholder="Display banner at top of machine page" value={uiConfig.bannerMessage || ''} onChange={(e) => setUiConfig(p => ({ ...p, bannerMessage: e.target.value }))} />
+            </div>
+
+            {/* Highlight */}
+            <div>
+              <label className="text-sm font-medium">Highlight Text</label>
+              <textarea className="w-full border rounded-xl px-3 py-2 text-sm mt-1" placeholder="Important note or highlight" value={uiConfig.highlightText || ''} onChange={(e) => setUiConfig(p => ({ ...p, highlightText: e.target.value }))} />
+            </div>
+
+            {/* Image */}
+            <div>
+              <label className="text-sm font-medium">Image URL</label>
+              <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm mt-1" placeholder="https://example.com/image.jpg" value={uiConfig.imageUrl || ''} onChange={(e) => setUiConfig(p => ({ ...p, imageUrl: e.target.value }))} />
+            </div>
+
+            {/* Poll */}
+            <div className="border-t pt-4">
+              <h3 className="text-sm font-semibold mb-3">Poll System</h3>
+              <div>
+                <label className="text-sm font-medium">Poll Question</label>
+                <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm mt-1" placeholder="What would you like to know?" value={uiConfig.pollQuestion || ''} onChange={(e) => setUiConfig(p => ({ ...p, pollQuestion: e.target.value }))} />
+              </div>
+              <div className="mt-3">
+                <label className="text-sm font-medium">Poll Options (comma-separated)</label>
+                <input type="text" className="w-full border rounded-xl px-3 py-2 text-sm mt-1" placeholder="Option 1, Option 2, Option 3" value={typeof uiConfig.pollOptions === 'string' ? uiConfig.pollOptions : (Array.isArray(uiConfig.pollOptions) ? uiConfig.pollOptions.join(', ') : '')} onChange={(e) => setUiConfig(p => ({ ...p, pollOptions: e.target.value }))} />
+              </div>
+              <label className="text-sm mt-3 flex items-center gap-2"><input type="checkbox" checked={!!uiConfig.pollActive} onChange={(e) => setUiConfig(p => ({ ...p, pollActive: e.target.checked }))} /> Enable Poll</label>
+            </div>
+
+            {/* WhatsApp */}
+            <div className="border-t pt-4">
+              <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={uiConfig.showWhatsapp !== false} onChange={(e) => setUiConfig(p => ({ ...p, showWhatsapp: e.target.checked }))} /> Show WhatsApp Button</label>
+            </div>
+
+            <button onClick={saveUiConfig} disabled={saving} className="w-full bg-blue-600 text-white rounded-xl px-4 py-2 font-semibold mt-4">Save UI Config</button>
+          </div>
+        </section>
+      )}
 
       <section className="bg-white rounded-2xl p-5 border border-gray-100">
         <h2 className="font-semibold mb-3 flex items-center gap-2"><Settings2 size={16} /> Dynamic Form Builder</h2>
